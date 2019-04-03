@@ -3,6 +3,7 @@ from numpy import linalg as la
 import cv2
 import scipy.io as spio
 from os import listdir
+import matplotlib.pyplot as plt
 
 
 ###################### FUNCTIONS
@@ -62,7 +63,7 @@ def create_img_dict(path):
 
     img_list = listdir(path)
     for img_name in img_list:
-        img_dict[path + '/' +img_name] = cv2.cvtColor(cv2.imread(path + '/' + img_name), cv2.COLOR_BGR2RGB) / 255
+        img_dict[img_name] = cv2.imread(path + '/' + img_name)
 
     return img_dict
 
@@ -74,17 +75,22 @@ def create_img_dict(path):
 #   img_dict    Dictionary with Key = Name of the image and Value = Normalized image in RGB format.
 #   templates   Dictionary with Key = aspect ration(ar) and Value = Templates belonging to the ar.
 # Output:
-#   shape_terms Shape term for each bounding box. Vector of size = tot_num_of_bbox.
-def gen_shape_terms(coords, img_names, img_dict, templates):
-    shape_terms = []
-    for i in range(0, 2):
-        img = img_dict[img_names[i]]
-        r, c = img.shape[0:2]
-        coord = coords[0]
-        bb = img[int(round(coord[0] * c)): int(round(coord[2] * c)), int(round(coord[1] * r)): int(round(coord[3] * r))]
-        shape_terms.append(gen_shape_term(bb, templates))
+#   cost Shape term for each bounding box. Vector of size = tot_num_of_bbox.
+def gen_shape_terms(coords, img, templates):
+    img = img / 255
+    cost = np.zeros(img.shape[0:2])
 
-    return shape_terms
+    r, c = img.shape[0:2]
+    for i in range(0, coords.shape[0]):
+        coord = coords[i]
+        c1 = int(round(coord[0] * c))
+        c2 = int(round(coord[2] * c))
+        r1 = int(round(coord[1] * r))
+        r2 = int(round(coord[3] * r))
+        bb = img[c1:c2, r1:r2]
+        cost[c1:c2, r1:r2] = gen_shape_term(bb, templates)
+
+    return cost
 
 
 # Provides shape potential for a given bounding box.
@@ -102,8 +108,8 @@ def gen_shape_term(bbox, shape_temps):
         temps = shape_temps[idx]
         temps = cv2.resize(temps, (cols, rows), interpolation=cv2.INTER_LINEAR)
 
-        prod = np.add(np.einsum('ij,ijk->ijk',bbox[:, :, 0], temps), np.einsum('ij,ijk->ijk',bbox[:, :, 1], temps))
-        prod = np.add(prod, np.einsum('ij,ijk->ijk',bbox[:, :, 2], temps))
+        prod = np.add(np.einsum('ij,ijk->ijk', bbox[:, :, 0], temps), np.einsum('ij,ijk->ijk', bbox[:, :, 1], temps))
+        prod = np.add(prod, np.einsum('ij,ijk->ijk', bbox[:, :, 2], temps))
         num = np.sum(prod, axis=(0, 1))
         deno = la.norm(bbox) * la.norm(temps, axis=(0, 1))
         corr = num / deno
@@ -120,3 +126,18 @@ def gen_shape_term(bbox, shape_temps):
     return shape_cost
 
 
+# Constants
+# seg_file = "box_info.npy"
+# shape_temp_file = "shapeTemplates.mat"
+# img_loc = "training"
+
+# # Loading segmentation network results
+# seg_data_dict = np.load(seg_file).item()
+# bb_img_name, bb_cls, bb_coord, bb_score = bbox_data(seg_data_dict)
+
+# # Getting shape templates
+# shape_templates = get_shape_templates(shape_temp_file)
+# img = cv2.imread(img_loc + "/" + bb_img_name[0])
+
+# # Generating shape term for each box
+# bb_shape_terms = gen_shape_terms(bb_coord, img, shape_templates)
